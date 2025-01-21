@@ -46,7 +46,7 @@ func (st *%s) run() <one_tool_return_type> {
 			if compile_answer == "" {
 				return "success"
 			} else {
-				//pass error back
+				return compile_answer //error
 			}
 		}
 	}
