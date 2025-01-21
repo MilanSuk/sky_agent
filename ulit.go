@@ -92,6 +92,11 @@ func CompileTool(tool string) error {
 		os.Remove(filepath.Join(folder, "bin"))
 	}
 
+	//remove main.go
+	defer func() {
+		os.Remove(mainPath)
+	}()
+
 	//fix files
 	{
 		fmt.Printf("Fixing /tools/%s ... ", tool)
@@ -120,11 +125,6 @@ func CompileTool(tool string) error {
 			return fmt.Errorf("go build failed: %w", err)
 		}
 		fmt.Printf("done in %.3fsec\n", (float64(time.Now().UnixMilli())/1000)-st)
-	}
-
-	//remove main.go
-	{
-		os.Remove(mainPath)
 	}
 
 	//write time stamp
