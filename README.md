@@ -49,7 +49,7 @@ go install golang.org/x/tools/cmd/goimports@latest
 
 
 Compile :
-<pre><code>git clone github.com/milansuk/sky_agent
+<pre><code>git clone https://github.com/milansuk/sky_agent
 cd sky_agent
 go build
 ./sky_agent "Search the web for How many stars are in the universe?"
