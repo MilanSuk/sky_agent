@@ -24,7 +24,7 @@ import (
 )
 
 func main() {
-	UserPrompt := "What is the population of Prague?"
+	UserPrompt := "Search the web for How many stars are in the universe?" //default, if program doesn't have argument
 
 	if len(os.Args) > 1 {
 		UserPrompt = os.Args[1]
