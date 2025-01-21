@@ -23,6 +23,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -39,13 +40,17 @@ type Agent struct {
 
 func NewAgent(use_case string, systemPrompt string, userPrompt string) *Agent {
 	if systemPrompt == "" {
-		systemPrompt = "You are an AI programming assistant, who enjoys precision and carefully follows the user's requirements. You use function calling alot. If you can't find right function then use tool 'create_new_tool'."
+		systemPrompt = "You are an AI programming assistant, who enjoys precision and carefully follows the user's requirements. Take advantage of function(tool) calling, they are very helpfull! If you can't find right function(tool) then use function 'create_new_tool'. If there is some problem with tool(for example bug) then use function 'update_tool'. If the user message mentioning file, you probably need to use(or create) tool to work with the file."
 	}
 
 	model := Service_findModelFromUse_cases(use_case)
 
 	agent := &Agent{Model: model}
-	agent.Props.Reset()
+	if strings.ToLower(use_case) == "search" {
+		agent.Props.ResetSearch()
+	} else {
+		agent.Props.ResetDefault()
+	}
 	agent.Props.Model = model
 
 	msg := OpenAI_completion_msg{Role: "system"}
@@ -94,6 +99,11 @@ func (agent *Agent) Save(save_as_last bool) error {
 }
 
 func (agent *Agent) AddTool(toolName string) {
+	if NeedCompileTool(toolName) { //must be compiled
+		fmt.Printf("Tool '%s' can't be add because it's not compiled\n", toolName)
+		return
+	}
+
 	api, err := ConvertFileIntoTool(toolName)
 	if err != nil {
 		log.Fatal(err)
@@ -158,6 +168,10 @@ func (agent *Agent) Run(server *NetServer) bool {
 		log.Fatal(fmt.Errorf("model %s not found. Edit g_services", agent.Model))
 	}
 
+	if service.Api_key == "<your_api_key>" {
+		log.Fatal(fmt.Errorf("no api_key for service '%s'", service.Name))
+	}
+
 	out, err = OpenAI_completion_Run(jsProps, service.Completion_url, service.Api_key)
 	if err != nil {
 		log.Fatal(err)
@@ -169,11 +183,20 @@ func (agent *Agent) Run(server *NetServer) bool {
 	agent.TotalTime += out.time
 
 	msg := OpenAI_completion_msg{Role: "assistant"}
-	msg.AddText(out.Content)
+	{
+		txt := out.Content
+		if len(out.Citations) > 0 {
+			txt += "\nCitations:\n"
+			for _, ct := range out.Citations {
+				txt += ct + "\n"
+			}
+		}
+		msg.AddText(txt)
+	}
 	msg.Tool_calls = out.Tool_calls
 	agent.Props.Messages = append(agent.Props.Messages, msg)
 
-	agent.callTools(out, server)
+	agent.callTools(out.Tool_calls, server)
 
 	return len(out.Tool_calls) > 0
 }
@@ -205,8 +228,8 @@ func (agent *Agent) RunLoop(max_iters int, max_tokens int, server *NetServer) {
 	fmt.Printf("Warning: Agent reached max iters(%d)\n", orig_max_iters)
 }
 
-func (agent *Agent) callTools(call OpenAI_completion_out, server *NetServer) {
-	for _, it := range call.Tool_calls {
+func (agent *Agent) callTools(tool_calls []OpenAI_completion_msg_Content_ToolCall, server *NetServer) {
+	for _, it := range tool_calls {
 		for _, tool := range agent.Props.Tools {
 			if tool.Function.Name == it.Function.Name {
 
@@ -271,9 +294,11 @@ func (agent *Agent) callTools(call OpenAI_completion_out, server *NetServer) {
 
 						err = CompileTool(string(toolName))
 						if err == nil {
-							cl.WriteArray(nil) //ok
+							//ok
+							cl.WriteArray(nil)
 						} else {
-							cl.WriteArray([]byte(err.Error()))
+							//error
+							cl.WriteArray([]byte(fmt.Sprintf("Tool '%s' was created, but compiler reported error: %v", toolName, err)))
 						}
 
 						agent.AddTool(string(toolName))
@@ -282,16 +307,18 @@ func (agent *Agent) callTools(call OpenAI_completion_out, server *NetServer) {
 
 				err = cmd.Wait()
 				if err != nil {
-					fmt.Println("Error:", err)
+					//tool crashed
+					js = []byte(fmt.Sprintf("Tool '%s' crashed with log.Fatal: %s", tool.Function.Name, err.Error()))
 				}
 
 				//save
 				msg := OpenAI_completion_msg{Role: "tool"}
 				msg.Tool_call_id = it.Id
 				msg.AddText(string(js))
+				//msg.AddImage()
 				agent.Props.Messages = append(agent.Props.Messages, msg)
 
-				fmt.Println("+Tool returns:", string(js))
+				fmt.Println("+Tool returns:", msg)
 			}
 		}
 	}
