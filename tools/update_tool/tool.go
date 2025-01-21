@@ -35,7 +35,7 @@ func (st *update_tool) run() string {
 
 	fmt.Println("update_tool UserPrompt:", UserPrompt)
 
-	code_answer := SDK_RunAgent("gpt-4o", 20, 20000, SystemPrompt, UserPrompt)
+	code_answer := SDK_RunAgent("coder", 20, 20000, SystemPrompt, UserPrompt)
 
 	var ok bool
 	code_answer, ok = strings.CutPrefix(code_answer, "```go")
