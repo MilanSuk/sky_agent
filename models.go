@@ -35,7 +35,7 @@ type Service struct {
 
 const g_model_agent = "gpt-4o"
 const g_model_coder = "gpt-4o"
-const g_model_search = "perplexity"
+const g_model_search = "llama-3.1-sonar-large-128k-online"
 
 var g_services = []Service{
 	{Name: "xai", Completion_url: "https://api.x.ai/v1/chat/completions", Api_key: "<your_api_key>",
