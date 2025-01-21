@@ -3,3 +3,9 @@
 /last.json
 /morning_run.gpx
 models.go
+tools/create_new_tool/bin
+tools/create_new_tool/ini
+tools/update_tool/bin
+tools/update_tool/ini
+tools/web_search/bin
+tools/web_search/ini
