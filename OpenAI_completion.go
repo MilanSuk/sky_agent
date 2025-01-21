@@ -27,6 +27,7 @@ import (
 )
 
 type OpenAI_completion_out struct {
+	Citations  []string
 	Content    string
 	Tool_calls []OpenAI_completion_msg_Content_ToolCall
 
@@ -74,9 +75,10 @@ func OpenAI_completion_Run(jsProps []byte, Completion_url string, Api_key string
 		Message string
 	}
 	type ST struct {
-		Choices []STChoice
-		Usage   STUsage
-		Error   STError
+		Citations []string
+		Choices   []STChoice
+		Usage     STUsage
+		Error     STError
 	}
 	var st ST
 	err = json.Unmarshal(js, &st)
@@ -87,12 +89,16 @@ func OpenAI_completion_Run(jsProps []byte, Completion_url string, Api_key string
 		return OpenAI_completion_out{}, errors.New(st.Error.Message)
 	}
 
-	var out OpenAI_completion_out
+	out := OpenAI_completion_out{}
 	if len(st.Choices) > 0 {
 		out = st.Choices[0].Message
+		out.Citations = st.Citations
+	} else if len(st.Citations) > 0 {
+		out.Citations = st.Citations
 	} else {
-		return OpenAI_completion_out{}, err
+		return out, err
 	}
+
 	out.inputTokens = st.Usage.Prompt_tokens
 	out.outputTokens = st.Usage.Completion_tokens
 	out.totalTokens = st.Usage.Total_tokens
