@@ -36,7 +36,7 @@ This repository is basically a manager for compiling, running, and communicating
 
 ## Compile
 Model settings:
-- Open models.go and replace `<your_api_key>`.
+- Open `models.go` and replace `<your_api_key>`.
 - If needed, edit constants `g_model_agent`, `g_model_coder`, `g_model_search`.
 
 Install Go language. It's needed to compile new tools which agent can create.
