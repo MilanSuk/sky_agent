@@ -148,8 +148,8 @@ type OpenAI_completion_format struct {
 	//Json_schema ...
 }
 
-func (props *OpenAI_completion_props) Reset() {
-	props.Model = "gpt-4o-mini" //"gpt-4o", "gpt-4o-mini"
+func (props *OpenAI_completion_props) ResetDefault() {
+	props.Model = "gpt-4o-mini"
 	props.Stream = false
 	props.Temperature = 1.0
 	props.Max_tokens = 4046
@@ -157,4 +157,9 @@ func (props *OpenAI_completion_props) Reset() {
 	props.Frequency_penalty = 0
 	props.Presence_penalty = 0
 	//props.Seed = -1
+}
+
+func (props *OpenAI_completion_props) ResetSearch() {
+	props.ResetDefault()
+	props.Frequency_penalty = 1
 }
