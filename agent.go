@@ -30,7 +30,8 @@ import (
 type Agent struct {
 	Model string
 
-	Props OpenAI_completion_props
+	Anthropic_props Anthropic_completion_props
+	OpenAI_props    OpenAI_completion_props
 
 	InputTokens  int
 	OutputTokens int
@@ -42,28 +43,45 @@ type Agent struct {
 
 func NewAgent(use_case string, systemPrompt string, userPrompt string) *Agent {
 	if systemPrompt == "" {
-		systemPrompt = "You are an AI programming assistant, who enjoys precision and carefully follows the user's requirements. Take advantage of function(tool) calling, they are very helpfull! If you can't find right function(tool) then use function 'create_new_tool'. If there is some problem with tool(for example bug) then use function 'update_tool'. If the user message mentioning file, you probably need to use(or create) tool to work with the file."
+		systemPrompt = "You are an AI programming assistant, who enjoys precision and carefully follows the user's requirements. Take advantage of function(tool) calling, they are very helpfull! If you can't find right function(tool) then use function 'create_new_tool'. If there is some problem with tool(for example bug) then use function 'update_tool'. Don't ask to use,change or create the tool, just do it! If the user message mentioning file, you probably need to use(or create) tool to work with the file."
 	}
 
 	model := Service_findModelFromUse_cases(use_case)
-
 	agent := &Agent{Model: model}
-	if strings.ToLower(use_case) == "search" {
-		agent.Props.ResetSearch()
+
+	if agent.IsModelAnthropic() {
+		agent.Anthropic_props.ResetDefault()
+		agent.Anthropic_props.Model = model
+
+		agent.Anthropic_props.System = systemPrompt
+
+		msg := Anthropic_completion_msg{Role: "user"}
+		msg.AddText(userPrompt)
+		agent.Anthropic_props.Messages = append(agent.Anthropic_props.Messages, msg)
+
 	} else {
-		agent.Props.ResetDefault()
+		if strings.ToLower(use_case) == "search" {
+			agent.OpenAI_props.ResetSearch()
+		} else {
+			agent.OpenAI_props.ResetDefault()
+		}
+		agent.OpenAI_props.Model = model
+
+		msg := OpenAI_completion_msg{Role: "system"}
+		msg.AddText(systemPrompt)
+		agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
+
+		msg = OpenAI_completion_msg{Role: "user"}
+		msg.AddText(userPrompt)
+		agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
 	}
-	agent.Props.Model = model
-
-	msg := OpenAI_completion_msg{Role: "system"}
-	msg.AddText(systemPrompt)
-	agent.Props.Messages = append(agent.Props.Messages, msg)
-
-	msg = OpenAI_completion_msg{Role: "user"}
-	msg.AddText(userPrompt)
-	agent.Props.Messages = append(agent.Props.Messages, msg)
 
 	return agent
+}
+
+func (agent *Agent) IsModelAnthropic() bool {
+	service := Service_findService(agent.Model)
+	return service.Anthropic_completion_url != ""
 }
 
 func (agent *Agent) Open(path string) error {
@@ -106,28 +124,50 @@ func (agent *Agent) AddTool(toolName string) {
 		return
 	}
 
-	api, err := ConvertFileIntoTool(toolName)
+	openaiAPI, anthropicAPI, err := ConvertFileIntoTool(toolName)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	//update
-	for i, tool := range agent.Props.Tools {
-		if tool.Function.Name == toolName {
-			agent.Props.Tools[i] = api
-			return
+	if agent.IsModelAnthropic() {
+		//update
+		for i, tool := range agent.Anthropic_props.Tools {
+			if tool.Name == toolName {
+				agent.Anthropic_props.Tools[i] = anthropicAPI
+				return
+			}
 		}
-	}
+		//add
+		agent.Anthropic_props.Tools = append(agent.Anthropic_props.Tools, anthropicAPI)
 
-	//add
-	agent.Props.Tools = append(agent.Props.Tools, api)
+	} else {
+		//update
+		for i, tool := range agent.OpenAI_props.Tools {
+			if tool.Function.Name == toolName {
+				agent.OpenAI_props.Tools[i] = openaiAPI
+				return
+			}
+		}
+		//add
+		agent.OpenAI_props.Tools = append(agent.OpenAI_props.Tools, openaiAPI)
+	}
 }
 
 func (agent *Agent) GetFinalMessage() string {
-	if len(agent.Props.Messages) > 0 {
-		msgs := agent.Props.Messages[len(agent.Props.Messages)-1].Content
-		if len(msgs) > 0 {
-			return msgs[0].Text
+	if agent.IsModelAnthropic() {
+		if len(agent.Anthropic_props.Messages) > 0 {
+			msgs := agent.Anthropic_props.Messages[len(agent.Anthropic_props.Messages)-1].Content
+			if len(msgs) > 0 {
+				return msgs[0].Text
+			}
+		}
+
+	} else {
+		if len(agent.OpenAI_props.Messages) > 0 {
+			msgs := agent.OpenAI_props.Messages[len(agent.OpenAI_props.Messages)-1].Content
+			if len(msgs) > 0 {
+				return msgs[0].Text
+			}
 		}
 	}
 	return ""
@@ -136,9 +176,13 @@ func (agent *Agent) GetFinalMessage() string {
 func (agent *Agent) PrintStats() {
 	fmt.Println("---Stats---")
 
-	fmt.Println("Model:", agent.Props.Model)
-
-	fmt.Println("#Messages:", len(agent.Props.Messages))
+	if agent.IsModelAnthropic() {
+		fmt.Println("Model:", agent.Anthropic_props.Model)
+		fmt.Println("#Messages:", len(agent.Anthropic_props.Messages))
+	} else {
+		fmt.Println("Model:", agent.OpenAI_props.Model)
+		fmt.Println("#Messages:", len(agent.OpenAI_props.Messages))
+	}
 
 	fmt.Println("Tokens(in, out):", agent.InputTokens, agent.OutputTokens)
 
@@ -158,13 +202,6 @@ func (agent *Agent) PrintStats() {
 }
 
 func (agent *Agent) Run(server *NetServer) bool {
-	var out OpenAI_completion_out
-
-	jsProps, err := json.Marshal(agent.Props)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	service := Service_findService(agent.Model)
 	if service == nil {
 		log.Fatal(fmt.Errorf("model %s not found. Edit g_services", agent.Model))
@@ -174,33 +211,91 @@ func (agent *Agent) Run(server *NetServer) bool {
 		log.Fatal(fmt.Errorf("no api_key for service '%s'", service.Name))
 	}
 
-	out, err = OpenAI_completion_Run(jsProps, service.Completion_url, service.Api_key)
-	if err != nil {
-		log.Fatal(err)
-	}
+	if agent.IsModelAnthropic() {
+		startTime := float64(time.Now().UnixMilli()) / 1000
 
-	agent.InputTokens += out.inputTokens
-	agent.OutputTokens += out.outputTokens
-	agent.TotalTokens += out.totalTokens
-	agent.TotalTime += out.time
+		out, err := Anthropic_completion_Run(agent.Anthropic_props, service.Anthropic_completion_url, service.Api_key)
+		if err != nil {
+			log.Fatal(err)
+		}
 
-	msg := OpenAI_completion_msg{Role: "assistant"}
-	{
-		txt := out.Content
-		if len(out.Citations) > 0 {
-			txt += "\nCitations:\n"
-			for _, ct := range out.Citations {
-				txt += ct + "\n"
+		dt := (float64(time.Now().UnixMilli()) / 1000) - startTime
+
+		content := ""
+		var tool_calls []OpenAI_completion_msg_Content_ToolCall
+		if len(out.Content) > 0 {
+			for _, it := range out.Content {
+				switch it.Type {
+				case "text":
+					content += it.Text
+
+				case "tool_use":
+					fn := OpenAI_completion_msg_Content_ToolCall_Function{Name: it.Name, Arguments: it.Input}
+					tool_calls = append(tool_calls, OpenAI_completion_msg_Content_ToolCall{Id: it.Id, Type: it.Type, Function: fn})
+				}
 			}
 		}
-		msg.AddText(txt)
+
+		agent.InputTokens += out.Usage.Input_tokens
+		agent.OutputTokens += out.Usage.Output_tokens
+		agent.TotalTokens += out.Usage.Input_tokens + out.Usage.Output_tokens
+		agent.TotalTime += dt
+
+		fmt.Printf("+LLM generated %dtoks which took %.1fsec = %.1f toks/sec\n", out.Usage.Output_tokens, dt, float64(out.Usage.Output_tokens)/dt)
+		fmt.Println("+LLM returns content:", content)
+		fmt.Println("+LLM returns tool_calls:", tool_calls)
+
+		msg := Anthropic_completion_msg{Role: "assistant", Content: out.Content}
+		agent.Anthropic_props.Messages = append(agent.Anthropic_props.Messages, msg)
+
+		agent.callTools(tool_calls, server)
+		return len(tool_calls) > 0
+
+	} else {
+		startTime := float64(time.Now().UnixMilli()) / 1000
+
+		out, err := OpenAI_completion_Run(agent.OpenAI_props, service.OpenAI_completion_url, service.Api_key)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		dt := (float64(time.Now().UnixMilli()) / 1000) - startTime
+
+		agent.InputTokens += out.Usage.Prompt_tokens
+		agent.OutputTokens += out.Usage.Completion_tokens
+		agent.TotalTokens += out.Usage.Total_tokens
+		agent.TotalTime += dt
+
+		var content string
+		var tool_calls []OpenAI_completion_msg_Content_ToolCall
+		if len(out.Choices) > 0 {
+			content = out.Choices[0].Message.Content
+			tool_calls = out.Choices[0].Message.Tool_calls
+		}
+
+		fmt.Printf("+LLM generated %dtoks which took %.1fsec = %.1f toks/sec\n", out.Usage.Completion_tokens, dt, float64(out.Usage.Completion_tokens)/dt)
+		fmt.Println("+LLM returns content:", content)
+		fmt.Println("+LLM returns tool_calls:", tool_calls)
+
+		msg := OpenAI_completion_msg{Role: "assistant"}
+		{
+			cwCitations := content
+			if len(out.Citations) > 0 {
+				cwCitations += "\nCitations:\n"
+				for _, ct := range out.Citations {
+					cwCitations += ct + "\n"
+				}
+			}
+			msg.AddText(cwCitations)
+		}
+		msg.Tool_calls = tool_calls
+		agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
+
+		agent.callTools(tool_calls, server)
+		return len(tool_calls) > 0
 	}
-	msg.Tool_calls = out.Tool_calls
-	agent.Props.Messages = append(agent.Props.Messages, msg)
 
-	agent.callTools(out.Tool_calls, server)
-
-	return len(out.Tool_calls) > 0
+	return false
 }
 
 func (agent *Agent) RunLoop(max_iters int, max_tokens int, server *NetServer) {
@@ -232,7 +327,7 @@ func (agent *Agent) RunLoop(max_iters int, max_tokens int, server *NetServer) {
 
 func (agent *Agent) callTools(tool_calls []OpenAI_completion_msg_Content_ToolCall, server *NetServer) {
 	for _, it := range tool_calls {
-		for _, tool := range agent.Props.Tools {
+		for _, tool := range agent.OpenAI_props.Tools {
 			if tool.Function.Name == it.Function.Name {
 
 				//call
@@ -320,13 +415,23 @@ func (agent *Agent) callTools(tool_calls []OpenAI_completion_msg_Content_ToolCal
 				}
 
 				//save
-				msg := OpenAI_completion_msg{Role: "tool"}
-				msg.Tool_call_id = it.Id
-				msg.AddText(string(js))
-				//msg.AddImage()
-				agent.Props.Messages = append(agent.Props.Messages, msg)
+				if len(agent.Anthropic_props.Messages) > 0 {
+					msg := Anthropic_completion_msg{Role: "user"}
+					msg.AddToolResult(it.Id, string(js))
+					//msg.AddImage()
+					agent.Anthropic_props.Messages = append(agent.Anthropic_props.Messages, msg)
 
-				fmt.Println("+Tool returns:", msg)
+					fmt.Println("+Tool returns:", msg)
+
+				} else if len(agent.OpenAI_props.Messages) > 0 {
+					msg := OpenAI_completion_msg{Role: "tool"}
+					msg.Tool_call_id = it.Id
+					msg.AddText(string(js))
+					//msg.AddImage()
+					agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
+
+					fmt.Println("+Tool returns:", msg)
+				}
 			}
 		}
 	}

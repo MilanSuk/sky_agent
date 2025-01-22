@@ -18,6 +18,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,40 +47,49 @@ type OpenAI_completion_tool_function_parameters_properties struct {
 	Enum        []string `json:"enum,omitempty"`
 	Default     string   `json:"default,omitempty"`
 }
-type OpenAI_completion_tool_function_parameters struct {
-	Type                 string                                                            `json:"type"` //"object"
-	Properties           map[string]*OpenAI_completion_tool_function_parameters_properties `json:"properties"`
-	Required             []string                                                          `json:"required,omitempty"`
-	AdditionalProperties bool                                                              `json:"additionalProperties"`
+type OpenAI_completion_tool_schema struct {
+	Type                 string   `json:"type"` //"object"
+	Required             []string `json:"required,omitempty"`
+	AdditionalProperties bool     `json:"additionalProperties"`
+
+	Properties  string                                                            `json:"properties"`
+	properties2 map[string]*OpenAI_completion_tool_function_parameters_properties //fake
 }
 type OpenAI_completion_tool_function struct {
-	Name        string                                     `json:"name"`
-	Description string                                     `json:"description"`
-	Parameters  OpenAI_completion_tool_function_parameters `json:"parameters"`
-	Strict      bool                                       `json:"strict"`
+	Name        string                        `json:"name"`
+	Description string                        `json:"description"`
+	Parameters  OpenAI_completion_tool_schema `json:"parameters"`
+	Strict      bool                          `json:"strict"`
 }
 
-func NewOpenAI_completion_tool(name, description string) *OpenAI_completion_tool {
-	fn := &OpenAI_completion_tool{Type: "function"}
-	fn.Function = OpenAI_completion_tool_function{Name: name, Description: description, Strict: true}
-	fn.Function.Parameters.Type = "object"
-	fn.Function.Parameters.AdditionalProperties = false
-	return fn
-}
-
-func (prm *OpenAI_completion_tool_function) AddParam(name, typee, description string) *OpenAI_completion_tool_function_parameters_properties {
+func (prm *OpenAI_completion_tool_schema) AddParam(name, typee, description string) *OpenAI_completion_tool_function_parameters_properties {
 	if strings.Contains(strings.ToLower(typee), "float") || strings.Contains(strings.ToLower(typee), "int") {
 		typee = "number"
 	}
 
-	p := &OpenAI_completion_tool_function_parameters_properties{Type: typee, Description: description}
+	prm.Required = append(prm.Required, name)
 
-	if prm.Parameters.Properties == nil {
-		prm.Parameters.Properties = make(map[string]*OpenAI_completion_tool_function_parameters_properties)
+	p := &OpenAI_completion_tool_function_parameters_properties{Type: typee, Description: description}
+	if prm.properties2 == nil {
+		prm.properties2 = make(map[string]*OpenAI_completion_tool_function_parameters_properties)
 	}
-	prm.Parameters.Properties[name] = p
-	prm.Parameters.Required = append(prm.Parameters.Required, name)
+	prm.properties2[name] = p
+
+	//dirty hack - Xai(anthropic api) wants attribute .Properties as string, not map ...
+	js, err := json.Marshal(prm.properties2)
+	if err == nil {
+		prm.Properties = string(js)
+	}
+
 	return p
+}
+
+func NewOpenAI_completion_tool(name, description string) *OpenAI_completion_tool {
+	fn := &OpenAI_completion_tool{Type: "function"}
+	fn.Function = OpenAI_completion_tool_function{Name: name, Description: description, Strict: false}
+	fn.Function.Parameters.Type = "object"
+	fn.Function.Parameters.AdditionalProperties = false
+	return fn
 }
 
 type OpenAI_completion_tool struct {

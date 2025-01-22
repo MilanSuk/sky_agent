@@ -134,11 +134,12 @@ func CompileTool(tool string) error {
 		st := float64(time.Now().UnixMilli()) / 1000
 		cmd := exec.Command("goimports", "-l", "-w", ".")
 		cmd.Dir = folder
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr //os.Stderr
 		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
 		err := cmd.Run()
 		if err != nil {
-			return fmt.Errorf("goimports failed: %w", err)
+			return fmt.Errorf("goimports failed: %s", stderr.String())
 		}
 		fmt.Printf("done in %.3fsec\n", (float64(time.Now().UnixMilli())/1000)-st)
 	}
@@ -149,11 +150,12 @@ func CompileTool(tool string) error {
 		st := float64(time.Now().UnixMilli()) / 1000
 		cmd := exec.Command("go", "build", "-o", "bin")
 		cmd.Dir = folder
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr //os.Stderr
 		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
 		err := cmd.Run()
 		if err != nil {
-			return fmt.Errorf("go build failed: %w", err)
+			return fmt.Errorf("compiler failed: %s", stderr.String())
 		}
 		fmt.Printf("done in %.3fsec\n", (float64(time.Now().UnixMilli())/1000)-st)
 	}
@@ -189,15 +191,16 @@ func ApplySandbox(code string) string {
 	return code
 }
 
-func ConvertFileIntoTool(stName string) (*OpenAI_completion_tool, error) {
+func ConvertFileIntoTool(stName string) (*OpenAI_completion_tool, *Anthropic_completion_tool, error) {
 	path := fmt.Sprintf("tools/%s/tool.go", stName)
 
 	node, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ParseComments)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing file: %v", err)
+		return nil, nil, fmt.Errorf("error parsing file: %v", err)
 	}
 
-	var tool *OpenAI_completion_tool
+	var oai *OpenAI_completion_tool
+	var ant *Anthropic_completion_tool
 
 	for _, decl := range node.Decls {
 		genDecl, ok := decl.(*ast.GenDecl)
@@ -225,7 +228,8 @@ func ConvertFileIntoTool(stName string) (*OpenAI_completion_tool, error) {
 				continue
 			}
 
-			tool = NewOpenAI_completion_tool(typeSpec.Name.Name, structDoc)
+			oai = NewOpenAI_completion_tool(typeSpec.Name.Name, structDoc)
+			ant = NewAnthropic_completion_tool(typeSpec.Name.Name, structDoc)
 
 			for _, field := range structType.Fields.List {
 				fieldNames := make([]string, len(field.Names))
@@ -242,17 +246,18 @@ func ConvertFileIntoTool(stName string) (*OpenAI_completion_tool, error) {
 				}
 
 				if len(fieldNames) > 0 {
-					tool.Function.AddParam(strings.Join(fieldNames, ", "), _exprToString(field.Type), fieldDoc)
+					oai.Function.Parameters.AddParam(strings.Join(fieldNames, ", "), _exprToString(field.Type), fieldDoc)
+					ant.Input_schema.AddParam(strings.Join(fieldNames, ", "), _exprToString(field.Type), fieldDoc)
 				}
 			}
 		}
 	}
 
-	if tool == nil {
-		return nil, fmt.Errorf("struct %s not found", stName)
+	if oai == nil {
+		return nil, nil, fmt.Errorf("struct %s not found", stName)
 	}
 
-	return tool, nil
+	return oai, ant, nil
 }
 
 func _exprToString(expr ast.Expr) string {

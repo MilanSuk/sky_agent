@@ -25,70 +25,66 @@ import (
 	"net/http"
 )
 
-type OpenAI_completion_out struct {
-	Citations  []string
-	Content    string
-	Tool_calls []OpenAI_completion_msg_Content_ToolCall
-}
-
-type OpenAIOutChoice struct {
-	Message OpenAI_completion_out
-	//Delta   STMsg
-}
-type OpenAIOutUsage struct {
-	Prompt_tokens     int
-	Completion_tokens int
-	Total_tokens      int
-}
-type OpenAIOutError struct {
+type AnthropicOut_Error struct {
 	Message string
 }
-type OpenAIOut struct {
-	Citations []string
-	Choices   []OpenAIOutChoice
-	Usage     OpenAIOutUsage
-	Error     *OpenAIOutError
+type AnthropicOut_Usage struct {
+	Input_tokens  int
+	Output_tokens int
+
+	Cache_creation_input_tokens int
+	Cache_read_input_tokens     int
 }
 
-func OpenAI_completion_Run(input OpenAI_completion_props, Completion_url string, Api_key string) (OpenAIOut, error) {
-	jsProps, err := json.Marshal(input)
+type AnthropicOut struct {
+	Role    string
+	Content []Anthropic_completion_msg_Content
+	Error   *AnthropicOut_Error
+	Usage   AnthropicOut_Usage
+}
+
+func Anthropic_completion_Run(input Anthropic_completion_props, Completion_url string, Api_key string) (AnthropicOut, error) {
+
+	jsProps, err := json.MarshalIndent(input, "", "") //...json.Marshal(input)
 	if err != nil {
-		return OpenAIOut{}, err
+		return AnthropicOut{}, err
 	}
 	body := bytes.NewReader(jsProps)
 
+	fmt.Println(string(jsProps))
+
 	req, err := http.NewRequest(http.MethodPost, Completion_url, body)
 	if err != nil {
-		return OpenAIOut{}, fmt.Errorf("NewRequest() failed: %w", err)
+		return AnthropicOut{}, fmt.Errorf("NewRequest() failed: %w", err)
 	}
 	req.Header.Add("Content-Type", "application/json")
-	req.Header.Add("Authorization", "Bearer "+Api_key)
+	req.Header.Add("x-api-key", Api_key)
+	req.Header.Add("anthropic-version", "2023-06-01")
 
 	client := &http.Client{}
 	res, err := client.Do(req)
 	if err != nil {
-		return OpenAIOut{}, fmt.Errorf("Do() failed: %w", err)
+		return AnthropicOut{}, fmt.Errorf("Do() failed: %w", err)
 	}
 	defer res.Body.Close()
 
 	js, err := io.ReadAll(res.Body)
 	if err != nil {
-		return OpenAIOut{}, err
+		return AnthropicOut{}, err
 	}
 
-	var out OpenAIOut
+	fmt.Println(string(js))
+
+	var out AnthropicOut
 	err = json.Unmarshal(js, &out)
 	if err != nil {
-		//fmt.Println(string(js))
-		return OpenAIOut{}, err
+		return AnthropicOut{}, err
 	}
 	if out.Error != nil && out.Error.Message != "" {
-		return OpenAIOut{}, errors.New(out.Error.Message)
+		return AnthropicOut{}, errors.New(out.Error.Message)
 	}
-
 	if res.StatusCode != 200 {
-		return OpenAIOut{}, fmt.Errorf("statusCode %d != 200, response: %s", res.StatusCode, string(js))
+		return AnthropicOut{}, fmt.Errorf("statusCode %d != 200, response: %s", res.StatusCode, string(js))
 	}
-
 	return out, nil
 }

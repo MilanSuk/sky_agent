@@ -25,20 +25,21 @@ type Model struct {
 }
 
 type Service struct {
-	Name           string
-	Completion_url string
-	Api_key        string
+	Name                     string
+	OpenAI_completion_url    string
+	Anthropic_completion_url string
+	Api_key                  string
 
 	Models        []Model
 	Default_model string
 }
 
-const g_model_agent = "gpt-4o"
-const g_model_coder = "gpt-4o"
+const g_model_agent = "grok-2"
+const g_model_coder = "grok-2"
 const g_model_search = "llama-3.1-sonar-large-128k-online"
 
 var g_services = []Service{
-	{Name: "xai", Completion_url: "https://api.x.ai/v1/chat/completions", Api_key: "<your_api_key>",
+	{Name: "xai", OpenAI_completion_url: "https://api.x.ai/v1/chat/completions" /*, Anthropic_completion_url: "https://api.x.ai/v1/messages"*/, Api_key: "<your_api_key>",
 		Models: []Model{
 			{Name: "grok-2-vision", Input_price: 2, Output_price: 10},
 			{Name: "grok-2", Input_price: 2, Output_price: 10},
@@ -47,7 +48,7 @@ var g_services = []Service{
 		},
 	},
 
-	{Name: "openai", Completion_url: "https://api.openai.com/v1/chat/completions", Api_key: "<your_api_key>",
+	{Name: "openai", OpenAI_completion_url: "https://api.openai.com/v1/chat/completions", Api_key: "<your_api_key>",
 		Models: []Model{
 			{Name: "gpt-3.5-turbo", Input_price: 0.5, Output_price: 1.5},
 			{Name: "gpt-4", Input_price: 30, Output_price: 60},
@@ -59,7 +60,14 @@ var g_services = []Service{
 		},
 	},
 
-	{Name: "perplexity", Completion_url: "https://api.perplexity.ai/chat/completions", Api_key: "<your_api_key>",
+	{Name: "anthropic", Anthropic_completion_url: "https://api.anthropic.com/v1/messages", Api_key: "<your_api_key>",
+		Models: []Model{
+			{Name: "claude-3-5-haiku-latest", Input_price: 0.8, Output_price: 4},
+			{Name: "claude-3-5-sonnet-latest", Input_price: 3, Output_price: 15},
+		},
+	},
+
+	{Name: "perplexity", OpenAI_completion_url: "https://api.perplexity.ai/chat/completions", Api_key: "<your_api_key>",
 		Models: []Model{
 			{Name: "llama-3.1-sonar-small-128k-online", Input_price: 0, Output_price: 0.2},
 			{Name: "llama-3.1-sonar-large-128k-online", Input_price: 0, Output_price: 1},
@@ -67,7 +75,7 @@ var g_services = []Service{
 		},
 	},
 
-	{Name: "local", Completion_url: "http://localhost:8090/v1/chat/completions", //8090 = port number. Replace it
+	{Name: "local", OpenAI_completion_url: "http://localhost:8090/v1/chat/completions", //8090 = port number. Replace it
 		Models: []Model{
 			//{Name: "name_of_model", Input_price: 0, Output_price: 0},
 		},
