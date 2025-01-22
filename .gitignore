@@ -9,3 +9,5 @@ tools/update_tool/bin
 tools/update_tool/ini
 tools/web_search/bin
 tools/web_search/ini
+tools/get_user_info/bin
+tools/get_user_info/ini

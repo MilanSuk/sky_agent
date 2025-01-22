@@ -23,6 +23,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,21 +66,50 @@ func GetToolTimeStamp(tool string) []byte {
 	folder := fmt.Sprintf("tools/%s", tool)
 
 	infoSdk, _ := os.Stat("tools/sdk.go")
+	infoSandbox, _ := os.Stat("tools/sdk_sandbox.go")
 	infoTool, _ := os.Stat(filepath.Join(folder, "tool.go"))
-	js, _ := json.Marshal(infoSdk.ModTime().UnixNano() + infoTool.ModTime().UnixNano())
+	js, _ := json.Marshal(infoSdk.ModTime().UnixNano() + infoSandbox.ModTime().UnixNano() + infoTool.ModTime().UnixNano())
 
 	return js
 }
 
 func CompileTool(tool string) error {
+
+	//apply sandbox
+	{
+		path := fmt.Sprintf("tools/%s/tool.go", tool)
+		codeOrig, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		codeNew := []byte(ApplySandbox(string(codeOrig)))
+		if !bytes.Equal(codeOrig, codeNew) {
+			os.WriteFile(path, codeNew, 0644)
+		}
+	}
+
 	//copy sdk into tool
 	mainPath := fmt.Sprintf("tools/%s/main.go", tool)
+	sandboxPath := fmt.Sprintf("tools/%s/sandbox.go", tool)
 	{
 		sdk, err := os.ReadFile("tools/sdk.go")
 		if err != nil {
 			return err
 		}
+
+		sdk_sandbox, err := os.ReadFile("tools/sdk_sandbox.go")
+		if err != nil {
+			return err
+		}
+
+		//write main.go
 		err = os.WriteFile(mainPath, []byte(strings.Replace(string(sdk), "_replace_with_tool_structure_", tool, 1)), 0644)
+		if err != nil {
+			return err
+		}
+
+		//write sandbox.go
+		err = os.WriteFile(sandboxPath, []byte(sdk_sandbox), 0644)
 		if err != nil {
 			return err
 		}
@@ -95,6 +125,7 @@ func CompileTool(tool string) error {
 	//remove main.go
 	defer func() {
 		os.Remove(mainPath)
+		os.Remove(sandboxPath)
 	}()
 
 	//fix files
@@ -133,6 +164,29 @@ func CompileTool(tool string) error {
 	}
 
 	return nil
+}
+
+func ApplySandbox(code string) string {
+	fl, err := os.ReadFile("tools/sdk_sandbox_fns.txt")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	lines := strings.Split(string(fl), "\n")
+	for _, ln := range lines {
+		if ln == "" {
+			continue //skip
+		}
+		var src, dst string
+		n, err := fmt.Sscanf(ln, "%s %s", &src, &dst)
+		if n != 2 || err != nil {
+			log.Fatal(err)
+		}
+
+		code = strings.ReplaceAll(code, src, dst)
+	}
+
+	return code
 }
 
 func ConvertFileIntoTool(stName string) (*OpenAI_completion_tool, error) {

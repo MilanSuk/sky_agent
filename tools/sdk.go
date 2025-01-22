@@ -82,6 +82,13 @@ func SDK_SetToolCode(tool string, code string) string {
 	js := _sdk_client.ReadArray()
 	return string(js)
 }
+func SDK_Sandbox_violation(err error) bool {
+	_sdk_client.WriteInt(4)
+	_sdk_client.WriteArray([]byte(err.Error()))
+
+	blockIt := _sdk_client.ReadInt()
+	return blockIt != 0
+}
 
 type SDK_NetClient struct {
 	conn *net.TCPConn

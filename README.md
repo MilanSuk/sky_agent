@@ -11,7 +11,7 @@ The result is general and fully autonomous agent which has around 800 lines of c
 How it works? If you write prompt and there is no tool, the default tool called `create_new_tool` will write the code for the new tool. Then agent will use that new tool and so on. There is also tool `update_tool` which is good for fixing bugs in the tools.
 
 This repository is basically a manager for compiling, running, and communicating with tools. And calling LLMs.
-**The agent and tools do not have any sandboxing!** This repository is for learning purposes. As mentioned, it's a low number of lines of code in a few .go files. It should be easy to hack on.
+The agent and tools have simple sandboxing, check `tools/sdk_sandbox_fns.txt`. This repository is for learning purposes. As mentioned, it's a low number of lines of code in a few .go files. It should be easy to hack on.
 
 
 
@@ -41,14 +41,12 @@ Model settings:
 
 Install Go language. It's needed to compile new tools which agent can create.
 - https://go.dev/doc/install
-
-Install Go tools:
+- install tools:
 <pre><code>go install golang.org/x/tools/cmd/gopls@latest
 go install golang.org/x/tools/cmd/goimports@latest
 </code></pre>
 
-
-Compile :
+Compile:
 <pre><code>git clone https://github.com/milansuk/sky_agent
 cd sky_agent
 go build

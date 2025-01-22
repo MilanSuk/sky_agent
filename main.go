@@ -46,7 +46,10 @@ func main() {
 
 	for _, toolName := range toolList {
 		if NeedCompileTool(toolName) {
-			CompileTool(toolName)
+			err := CompileTool(toolName)
+			if err != nil {
+				fmt.Println(err)
+			}
 		}
 	}
 

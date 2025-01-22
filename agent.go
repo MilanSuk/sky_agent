@@ -36,6 +36,8 @@ type Agent struct {
 	OutputTokens int
 	TotalTokens  int
 	TotalTime    float64
+
+	Sandbox_violations []string
 }
 
 func NewAgent(use_case string, systemPrompt string, userPrompt string) *Agent {
@@ -302,6 +304,12 @@ func (agent *Agent) callTools(tool_calls []OpenAI_completion_msg_Content_ToolCal
 						}
 
 						agent.AddTool(string(toolName))
+
+					case 4: //Sandbox_violation
+						info, _ := cl.ReadArray()
+						agent.Sandbox_violations = append(agent.Sandbox_violations, string(info))
+						fmt.Println("Sandbox violation:", string(info))
+						cl.WriteInt(1) //block it
 					}
 				}
 
