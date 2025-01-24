@@ -43,7 +43,10 @@ type Agent struct {
 
 func NewAgent(use_case string, systemPrompt string, userPrompt string) *Agent {
 	if systemPrompt == "" {
-		systemPrompt = "You are an AI programming assistant, who enjoys precision and carefully follows the user's requirements. Take advantage of function(tool) calling, they are very helpfull! If you can't find right function(tool) then use function 'create_new_tool'. If there is some problem with tool(for example bug) then use function 'update_tool'. Don't ask to use,change or create the tool, just do it! If the user message mentioning file, you probably need to use(or create) tool to work with the file."
+		systemPrompt = `You are an AI programming assistant, who enjoys precision and carefully follows the user's requirements.
+Take advantage of function(tool) calling; they are very helpful! If you can't find the right function(tool), use the function 'create_new_tool'. If there is some problem with a tool(for example, a bug) then use the function 'update_tool'.
+You shouldn't just make variable's value. The values should be read(get()) from somewhere or computed from other values. Also, If the variable was read and it's changed, you should probably write(set()) it back.
+Don't ask to use, change, or create a tool, just do it! If the user message mentions file, you probably need to use(or create) a tool to work with the file.`
 	}
 
 	model := Service_findModelFromUse_cases(use_case)
@@ -67,13 +70,16 @@ func NewAgent(use_case string, systemPrompt string, userPrompt string) *Agent {
 		}
 		agent.OpenAI_props.Model = model
 
-		msg := OpenAI_completion_msg{Role: "system"}
-		msg.AddText(systemPrompt)
-		agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
+		{
+			msg := OpenAI_completion_msgPlain{Role: "system", Content: systemPrompt}
+			agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
+		}
 
-		msg = OpenAI_completion_msg{Role: "user"}
-		msg.AddText(userPrompt)
-		agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
+		{
+			msg := OpenAI_completion_msg{Role: "user"}
+			msg.AddText(userPrompt)
+			agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
+		}
 	}
 
 	return agent
