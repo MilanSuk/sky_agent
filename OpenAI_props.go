@@ -26,7 +26,7 @@ import (
 
 type OpenAI_completion_props struct {
 	Model    string        `json:"model"`
-	Messages []interface{} `json:"messages"` //OpenAI_completion_msg, OpenAI_completion_msgCalls, OpenAI_completion_msgResult
+	Messages []interface{} `json:"messages"` //OpenAI_completion_msgPlain, OpenAI_completion_msg, OpenAI_completion_msgCalls, OpenAI_completion_msgResult
 	Stream   bool          `json:"stream"`
 
 	Tools []*OpenAI_completion_tool `json:"tools,omitempty"`
@@ -128,11 +128,12 @@ type OpenAI_completion_msg_Content struct {
 }
 
 type OpenAI_completion_msg struct {
-	Role         string                                   `json:"role"` //"system", "user", "assistant", "tool"
-	Content      []OpenAI_completion_msg_Content          `json:"content"`
-	Tool_calls   []OpenAI_completion_msg_Content_ToolCall `json:"tool_calls,omitempty"`
-	Tool_call_id string                                   `json:"tool_call_id,omitempty"`
-	Name         string                                   `json:"name,omitempty"` //Tool name: Mistral wants this
+	Role    string                          `json:"role"` //"system", "user", "assistant", "tool"
+	Content []OpenAI_completion_msg_Content `json:"content"`
+}
+type OpenAI_completion_msgPlain struct {
+	Role    string `json:"role"` //"system", "user", "assistant", "tool"
+	Content string `json:"content"`
 }
 
 type OpenAI_completion_msgCalls struct {
