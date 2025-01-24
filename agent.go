@@ -164,9 +164,20 @@ func (agent *Agent) GetFinalMessage() string {
 
 	} else {
 		if len(agent.OpenAI_props.Messages) > 0 {
-			msgs := agent.OpenAI_props.Messages[len(agent.OpenAI_props.Messages)-1].Content
-			if len(msgs) > 0 {
-				return msgs[0].Text
+			msg := agent.OpenAI_props.Messages[len(agent.OpenAI_props.Messages)-1]
+			switch it := msg.(type) {
+			case OpenAI_completion_msg:
+				if len(it.Content) > 0 {
+					return it.Content[0].Text
+				}
+			case OpenAI_completion_msgCalls:
+				if len(it.Content) > 0 {
+					return it.Content
+				}
+			case OpenAI_completion_msgResult:
+				if len(it.Content) > 0 {
+					return it.Content
+				}
 			}
 		}
 	}
@@ -195,7 +206,14 @@ func (agent *Agent) PrintStats() {
 		input_price := model.Input_price / 1000000
 		output_price := model.Output_price / 1000000
 
-		fmt.Println("Price($):", float64(agent.InputTokens)*input_price+float64(agent.OutputTokens)*output_price)
+		price := float64(agent.InputTokens)*input_price + float64(agent.OutputTokens)*output_price
+		fmt.Printf("Price: $%f\n", price)
+		fmt.Printf("Runs per $1: %dx\n", int(1/price))
+	}
+
+	fmt.Println("Sandbox violations:", len(agent.Sandbox_violations))
+	for _, it := range agent.Sandbox_violations {
+		fmt.Printf("- %s\n", it)
 	}
 
 	fmt.Println("--- ---")
@@ -277,7 +295,7 @@ func (agent *Agent) Run(server *NetServer) bool {
 		fmt.Println("+LLM returns content:", content)
 		fmt.Println("+LLM returns tool_calls:", tool_calls)
 
-		msg := OpenAI_completion_msg{Role: "assistant"}
+		msg := OpenAI_completion_msgCalls{Role: "assistant"}
 		{
 			cwCitations := content
 			if len(out.Citations) > 0 {
@@ -286,7 +304,7 @@ func (agent *Agent) Run(server *NetServer) bool {
 					cwCitations += ct + "\n"
 				}
 			}
-			msg.AddText(cwCitations)
+			msg.Content = cwCitations
 		}
 		msg.Tool_calls = tool_calls
 		agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
@@ -424,9 +442,11 @@ func (agent *Agent) callTools(tool_calls []OpenAI_completion_msg_Content_ToolCal
 					fmt.Println("+Tool returns:", msg)
 
 				} else if len(agent.OpenAI_props.Messages) > 0 {
-					msg := OpenAI_completion_msg{Role: "tool"}
+					msg := OpenAI_completion_msgResult{Role: "tool"}
+					msg.Name = tool.Function.Name
 					msg.Tool_call_id = it.Id
-					msg.AddText(string(js))
+					msg.Content = string(js)
+					//msg.AddText(string(js))
 					//msg.AddImage()
 					agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
 
