@@ -34,6 +34,9 @@ type Service struct {
 	Default_model string
 }
 
+// grok-2
+// gpt-4o-mini
+// mistral-large-latest
 const g_model_agent = "grok-2"
 const g_model_coder = "grok-2"
 const g_model_search = "llama-3.1-sonar-large-128k-online"
@@ -64,6 +67,17 @@ var g_services = []Service{
 		Models: []Model{
 			{Name: "claude-3-5-haiku-latest", Input_price: 0.8, Output_price: 4},
 			{Name: "claude-3-5-sonnet-latest", Input_price: 3, Output_price: 15},
+		},
+	},
+
+	{Name: "mistral", OpenAI_completion_url: "https://api.mistral.ai/v1/chat/completions", Api_key: "<your_api_key>",
+		Models: []Model{
+			{Name: "mistral-large-latest", Input_price: 2, Output_price: 6},
+			{Name: "pixtral-large-latest", Input_price: 2, Output_price: 6},
+			{Name: "mistral-small-latest", Input_price: 0.2, Output_price: 0.6},
+			{Name: "codestral-latest", Input_price: 0.3, Output_price: 0.9},
+			{Name: "pixtral-12b-2409", Input_price: 0.15, Output_price: 0.15},  //free?
+			{Name: "open-mistral-nemo", Input_price: 0.15, Output_price: 0.15}, //free?
 		},
 	},
 
