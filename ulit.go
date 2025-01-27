@@ -31,8 +31,8 @@ import (
 	"time"
 )
 
-func GetToolsList() ([]string, error) {
-	files, err := os.ReadDir("tools")
+func GetToolsList(tool string) ([]string, error) {
+	files, err := os.ReadDir(tool)
 	if err != nil {
 		return nil, err
 	}
@@ -46,51 +46,50 @@ func GetToolsList() ([]string, error) {
 }
 
 func NeedCompileTool(tool string) bool {
-	folder := fmt.Sprintf("tools/%s", tool)
-
 	//check time stamp
 	{
 		js := GetToolTimeStamp(tool)
-		js2, _ := os.ReadFile(filepath.Join(folder, "ini"))
+		js2, _ := os.ReadFile(filepath.Join(tool, "ini"))
 		if !bytes.Equal(js, js2) {
 			return true
 		}
 	}
 
 	//check if tool bin exist
-	_, err := os.Stat(filepath.Join(folder, "bin"))
+	_, err := os.Stat(filepath.Join(tool, "bin"))
 	return os.IsNotExist(err)
 }
 
 func GetToolTimeStamp(tool string) []byte {
-	folder := fmt.Sprintf("tools/%s", tool)
-
 	infoSdk, _ := os.Stat("tools/sdk.go")
 	infoSandbox, _ := os.Stat("tools/sdk_sandbox.go")
-	infoTool, _ := os.Stat(filepath.Join(folder, "tool.go"))
+	infoTool, _ := os.Stat(filepath.Join(tool, "tool.go"))
 	js, _ := json.Marshal(infoSdk.ModTime().UnixNano() + infoSandbox.ModTime().UnixNano() + infoTool.ModTime().UnixNano())
 
 	return js
 }
 
 func CompileTool(tool string) error {
+	toolPath := filepath.Join(tool, "tool.go")
+	mainPath := filepath.Join(tool, "main.go")
+	sandboxPath := filepath.Join(tool, "sandbox.go")
+	iniPath := filepath.Join(tool, "ini")
+	binPath := filepath.Join(tool, "bin")
 
 	//apply sandbox
 	{
-		path := fmt.Sprintf("tools/%s/tool.go", tool)
-		codeOrig, err := os.ReadFile(path)
+		codeOrig, err := os.ReadFile(toolPath)
 		if err != nil {
 			return err
 		}
 		codeNew := []byte(ApplySandbox(string(codeOrig)))
 		if !bytes.Equal(codeOrig, codeNew) {
-			os.WriteFile(path, codeNew, 0644)
+			os.WriteFile(toolPath, codeNew, 0644)
 		}
 	}
 
 	//copy sdk into tool
-	mainPath := fmt.Sprintf("tools/%s/main.go", tool)
-	sandboxPath := fmt.Sprintf("tools/%s/sandbox.go", tool)
+
 	{
 		sdk, err := os.ReadFile("tools/sdk.go")
 		if err != nil {
@@ -103,7 +102,8 @@ func CompileTool(tool string) error {
 		}
 
 		//write main.go
-		err = os.WriteFile(mainPath, []byte(strings.Replace(string(sdk), "_replace_with_tool_structure_", tool, 1)), 0644)
+		stName := filepath.Base(tool)
+		err = os.WriteFile(mainPath, []byte(strings.Replace(string(sdk), "_replace_with_tool_structure_", stName, 1)), 0644)
 		if err != nil {
 			return err
 		}
@@ -115,11 +115,9 @@ func CompileTool(tool string) error {
 		}
 	}
 
-	folder := fmt.Sprintf("tools/%s", tool)
-
 	//remove old bin
 	{
-		os.Remove(filepath.Join(folder, "bin"))
+		os.Remove(binPath)
 	}
 
 	//remove main.go
@@ -130,10 +128,26 @@ func CompileTool(tool string) error {
 
 	//fix files
 	{
-		fmt.Printf("Fixing /tools/%s ... ", tool)
+		fmt.Printf("Fixing %s ... ", tool)
 		st := float64(time.Now().UnixMilli()) / 1000
 		cmd := exec.Command("goimports", "-l", "-w", ".")
-		cmd.Dir = folder
+		cmd.Dir = tool
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr //os.Stderr
+		cmd.Stdout = os.Stdout
+		err := cmd.Run()
+		if err != nil {
+			return fmt.Errorf("goimports failed: %s", stderr.String())
+		}
+		fmt.Printf("done in %.3fsec\n", (float64(time.Now().UnixMilli())/1000)-st)
+	}
+
+	//update packages
+	{
+		fmt.Printf("Fixing %s ... ", tool)
+		st := float64(time.Now().UnixMilli()) / 1000
+		cmd := exec.Command("go", "mod", "tidy")
+		cmd.Dir = tool
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr //os.Stderr
 		cmd.Stdout = os.Stdout
@@ -146,10 +160,10 @@ func CompileTool(tool string) error {
 
 	//compile
 	{
-		fmt.Printf("Compiling /tools/%s ... ", tool)
+		fmt.Printf("Compiling %s ... ", tool)
 		st := float64(time.Now().UnixMilli()) / 1000
 		cmd := exec.Command("go", "build", "-o", "bin")
-		cmd.Dir = folder
+		cmd.Dir = tool
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr //os.Stderr
 		cmd.Stdout = os.Stdout
@@ -162,7 +176,7 @@ func CompileTool(tool string) error {
 
 	//write time stamp
 	{
-		os.WriteFile(filepath.Join(folder, "ini"), GetToolTimeStamp(tool), 0644)
+		os.WriteFile(iniPath, GetToolTimeStamp(tool), 0644)
 	}
 
 	return nil
@@ -191,10 +205,12 @@ func ApplySandbox(code string) string {
 	return code
 }
 
-func ConvertFileIntoTool(stName string) (*OpenAI_completion_tool, *Anthropic_completion_tool, error) {
-	path := fmt.Sprintf("tools/%s/tool.go", stName)
+func ConvertFileIntoTool(tool string) (*OpenAI_completion_tool, *Anthropic_completion_tool, error) {
+	stName := filepath.Base(tool)
 
-	node, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ParseComments)
+	toolPath := filepath.Join(tool, "tool.go")
+
+	node, err := parser.ParseFile(token.NewFileSet(), toolPath, nil, parser.ParseComments)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error parsing file: %v", err)
 	}

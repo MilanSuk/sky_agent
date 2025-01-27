@@ -54,6 +54,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	/*ret := interface{}(st.run())
+	output, ok := ret.([]byte)
+	if !ok {
+		output, err = json.Marshal(ret)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}*/
 
 	//send back result
 	_sdk_client.WriteInt(1)
@@ -74,9 +82,9 @@ func SDK_RunAgent(use_case string, max_iters int, max_tokens int, systemPrompt s
 	return string(js)
 }
 
-func SDK_SetToolCode(tool string, code string) string {
+func SDK_SetToolCode(toolName string, code string) string {
 	_sdk_client.WriteInt(3)
-	_sdk_client.WriteArray([]byte(tool))
+	_sdk_client.WriteArray([]byte(toolName))
 	_sdk_client.WriteArray([]byte(code))
 
 	js := _sdk_client.ReadArray()
@@ -88,6 +96,13 @@ func SDK_Sandbox_violation(err error) bool {
 
 	blockIt := _sdk_client.ReadInt()
 	return blockIt != 0
+}
+func SDK_GetPassword(id string) string {
+	_sdk_client.WriteInt(5)
+	_sdk_client.WriteArray([]byte(id))
+
+	password := _sdk_client.ReadArray()
+	return string(password)
 }
 
 type SDK_NetClient struct {
