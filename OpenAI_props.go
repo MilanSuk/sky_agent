@@ -31,11 +31,11 @@ type OpenAI_completion_props struct {
 
 	Tools []*OpenAI_completion_tool `json:"tools,omitempty"`
 
-	Temperature       float64 `json:"temperature"`       //1.0
-	Max_tokens        int     `json:"max_tokens"`        //
-	Top_p             float64 `json:"top_p"`             //1.0
-	Frequency_penalty float64 `json:"frequency_penalty"` //0
-	Presence_penalty  float64 `json:"presence_penalty"`  //0
+	Temperature       float64 `json:"temperature"`                 //1.0
+	Max_tokens        int     `json:"max_tokens"`                  //
+	Top_p             float64 `json:"top_p"`                       //1.0
+	Frequency_penalty float64 `json:"frequency_penalty,omitempty"` //0
+	Presence_penalty  float64 `json:"presence_penalty,omitempty"`  //0
 
 	Response_format *OpenAI_completion_format `json:"response_format,omitempty"`
 }
@@ -70,9 +70,6 @@ func (prm *OpenAI_completion_tool_schema) AddParam(name, typee, description stri
 	prm.Required = append(prm.Required, name)
 
 	p := &OpenAI_completion_tool_function_parameters_properties{Type: typee, Description: description}
-	if prm.Properties == nil {
-		prm.Properties = make(map[string]*OpenAI_completion_tool_function_parameters_properties)
-	}
 	prm.Properties[name] = p
 
 	//dirty hack - Xai(anthropic api) wants attribute .Properties as string, not map ...
@@ -93,6 +90,7 @@ func NewOpenAI_completion_tool(name, description string) *OpenAI_completion_tool
 	fn.Function = OpenAI_completion_tool_function{Name: name, Description: description, Strict: false}
 	fn.Function.Parameters.Type = "object"
 	fn.Function.Parameters.AdditionalProperties = false
+	fn.Function.Parameters.Properties = make(map[string]*OpenAI_completion_tool_function_parameters_properties)
 	return fn
 }
 
@@ -181,7 +179,7 @@ type OpenAI_completion_format struct {
 func (props *OpenAI_completion_props) ResetDefault() {
 	props.Model = "gpt-4o-mini"
 	props.Stream = false
-	props.Temperature = 1.0
+	props.Temperature = 0.2
 	props.Max_tokens = 4046
 	props.Top_p = 0.7 //1.0
 	props.Frequency_penalty = 0

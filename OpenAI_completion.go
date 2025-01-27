@@ -76,11 +76,14 @@ func OpenAI_completion_Run(input OpenAI_completion_props, Completion_url string,
 		return OpenAIOut{}, err
 	}
 
+	if len(js) == 0 {
+		return OpenAIOut{}, fmt.Errorf("output is empty")
+	}
+
 	var out OpenAIOut
 	err = json.Unmarshal(js, &out)
 	if err != nil {
-		//fmt.Println(string(js))
-		return OpenAIOut{}, err
+		return OpenAIOut{}, fmt.Errorf("%w. %s", err, string(js))
 	}
 	if out.Error != nil && out.Error.Message != "" {
 		return OpenAIOut{}, errors.New(out.Error.Message)
