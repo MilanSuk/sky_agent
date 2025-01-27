@@ -7,29 +7,42 @@ import (
 
 // Create new tool from description.
 type create_new_tool struct {
-	Name        string //tool name. No spaces(use '_' instead) or special characters.
+	Name        string //Tool name. No spaces(use '_' instead) or special characters.
 	Description string //Prompt with the name of tool, parameters(name, type, description) and detail description of functionality.
 }
 
 func (st *create_new_tool) run() string {
 	SystemPrompt := "You are an AI programming assistant, who enjoys precision and carefully follows the user's requirements. You write code in Go-lang."
 
-	UserPrompt := "This is prompt from user:\n"
-	UserPrompt += st.Description
+	UserPrompt := ""
+
+	UserPrompt += "These are the APIs:\n"
+	UserPrompt += "//When you login to any service this function converts password_id into password.\n"
+	UserPrompt += "func SDK_GetPassword(id string) string	//returns password.\n\n"
 	UserPrompt += "\n"
 
-	UserPrompt += "Based on this prompt modify this template:"
+	UserPrompt += "This is the file(code) template:"
 	UserPrompt += "```go\n"
 	UserPrompt += fmt.Sprintf(`package main
 //<tool_description>
 type %s struct {
 	<tool_input_parameters_with_descriptions_as_comments>
 }
-func (st *%s) run() <one_tool_return_type> {
+func (st *%s) run() <tool_return_type> {
 	<tool_implementation>	//If there is error, use log.Fatalf
 }`, st.Name, st.Name)
-	UserPrompt += "\n```"
+	UserPrompt += "```"
+	UserPrompt += "\n\n"
 
+	UserPrompt += "This is the prompt from user:\n"
+	UserPrompt += st.Description
+	UserPrompt += "\n\n"
+
+	UserPrompt += "Based on the user's prompt modify the file template."
+	UserPrompt += "\n"
+	UserPrompt += "<tool_return_type> must be only one. If you are not sure what it should be, use string and return \"success\"."
+	UserPrompt += "\n"
+	UserPrompt += "You can add more input attributes(more than what is mention in the user prompt). It's very important that the code don't have any placeholders or constants which should programmer changed later(example.com, etc.). Write production ready code only!"
 	UserPrompt += "\n"
 	UserPrompt += "If an error occurs, use log.Fatalf. Output only modified template above. Implement everything, no placeholders! Don't add main() function to the code."
 
