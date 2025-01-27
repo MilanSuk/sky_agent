@@ -18,6 +18,7 @@ package main
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,12 +48,12 @@ type Anthropic_completion_msg_Content struct {
 	Type string `json:"type"` //"image", "text"
 	Text string `json:"text,omitempty"`
 
-	Tool_use_id string      `json:"tool_use_id,omitempty"`
-	Content     interface{} `json:"content,omitempty"` //tool result
+	Tool_use_id string `json:"tool_use_id,omitempty"`
+	Content     string `json:"content,omitempty"` //tool result
 
-	Id    string `json:"id,omitempty"`
-	Name  string `json:"name,omitempty"`  //"get_weather"
-	Input string `json:"input,omitempty"` //{"location": "San Francisco, CA", "unit": "celsius"}
+	Id    string          `json:"id,omitempty"`
+	Name  string          `json:"name,omitempty"`  //"get_weather"
+	Input json.RawMessage `json:"input,omitempty"` //{"location": "San Francisco, CA", "unit": "celsius"}
 
 	Source *Anthropic_completion_msg_content_Image `json:"source,omitempty"`
 }
@@ -100,13 +101,14 @@ func NewAnthropic_completion_tool(name, description string) *Anthropic_completio
 	fn := &Anthropic_completion_tool{Name: name, Description: description}
 	fn.Input_schema.Type = "object"
 	fn.Input_schema.AdditionalProperties = false
+	fn.Input_schema.Properties = make(map[string]*OpenAI_completion_tool_function_parameters_properties)
 	return fn
 }
 
 func (props *Anthropic_completion_props) ResetDefault() {
-	props.Model = "grok-2"
+	props.Model = "claude-3-5-haiku-latest"
 	props.Stream = false
-	props.Temperature = 1.0
+	props.Temperature = 0.2
 	props.Max_tokens = 4046
 	//props.Seed = -1
 }

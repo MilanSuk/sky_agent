@@ -44,14 +44,11 @@ type AnthropicOut struct {
 }
 
 func Anthropic_completion_Run(input Anthropic_completion_props, Completion_url string, Api_key string) (AnthropicOut, error) {
-
 	jsProps, err := json.MarshalIndent(input, "", "") //...json.Marshal(input)
 	if err != nil {
 		return AnthropicOut{}, err
 	}
 	body := bytes.NewReader(jsProps)
-
-	fmt.Println(string(jsProps))
 
 	req, err := http.NewRequest(http.MethodPost, Completion_url, body)
 	if err != nil {
@@ -72,8 +69,6 @@ func Anthropic_completion_Run(input Anthropic_completion_props, Completion_url s
 	if err != nil {
 		return AnthropicOut{}, err
 	}
-
-	fmt.Println(string(js))
 
 	var out AnthropicOut
 	err = json.Unmarshal(js, &out)
