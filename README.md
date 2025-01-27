@@ -3,6 +3,7 @@ AI agent is an autonomous program that solves user problems.
 To solve a high range of problems, **Agents can *not* be fixed flow and can *not* have fixed tools**. Agent must be able to create new tools from scratch.
 
 
+
 ## The repository
 This was my weekend project. Todays companies represent AI Agents as something complex, so I decided to create one from scratch(without using 3rd party libraries).
 
@@ -16,25 +17,33 @@ The agent and tools have simple sandboxing, check `tools/sdk_sandbox_fns.txt`. T
 
 
 ## Example prompts
-"What is the population of Prague, Paris and Los Angeles? Use OpenStreetMap's Nominatim API to get latest data."
+*"What is the population of Prague, Paris and Los Angeles? Use OpenStreetMap's Nominatim API to get latest data."*
 - agent calls `create_new_tool` to create new tool `get_city_population`.
 - agent calls 3x `get_city_population` to get population numbers.
 - agent answers.
 
-"Search the web for How many stars are in the universe?"
-- agent call 'web_search'(Perplexity returns few paragraphs)
+*"Search the web for How many stars are in the universe?"*
+- agent call `web_search`(Perplexity returns few paragraphs)
 - agent answers.
 
-"Compute amount of burn calories in 'morning_run.gpx' file."
+*"Compute amount of burn calories in 'morning_run.gpx' file."*
 - agent calls `create_new_tool` to create new tool `calculate_calories_from_gpx_file`.
-- agent calls `get_user_info` to get "weight_kg".
+- agent calls `access_disk` to get weight of the user.
+- agent writes and execute SQL query to get weight of the user.
 - agent calls `calculate_calories_from_gpx_file` to get calories.
 - agent answers.
 - *note: you need to have file 'morning_run.gpx' in repo folder!*
 
+*"Send email to <email_address>. Subject: Test mail. Body: Hi there!"*
+- agent calls `create_new_tool` to create new tool `send_email`.
+- agent calls `access_disk` to get STMP login information
+- agent writes and execute SQL query to get STMP login information from database.
+- agent calls `send_email`.
+- *note: put email login into database(password_id) and passwords.json(plain passwoord)
 
 
-## Compile
+
+## Compile & Run
 Model settings:
 - Open `models.go` and replace `<your_api_key>`.
 - If needed, edit constants `g_model_agent`, `g_model_coder`, `g_model_search`.
@@ -49,9 +58,12 @@ go install golang.org/x/tools/cmd/goimports@latest
 Compile:
 <pre><code>git clone https://github.com/milansuk/sky_agent
 cd sky_agent
+go mod tidy
 go build
-./sky_agent "Search the web for How many stars are in the universe?"
 </code></pre>
+
+Run:
+<pre><code>./sky_agent "Search the web for How many stars are in the universe?"</code></pre>
 
 
 
