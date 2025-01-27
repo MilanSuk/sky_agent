@@ -22,13 +22,18 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
 
 type Agent struct {
-	Model string
+	server    *NetServer
+	passwords *Passwords
+
+	Folder string
+	Model  string
 
 	Anthropic_props Anthropic_completion_props
 	OpenAI_props    OpenAI_completion_props
@@ -41,16 +46,23 @@ type Agent struct {
 	Sandbox_violations []string
 }
 
-func NewAgent(use_case string, systemPrompt string, userPrompt string) *Agent {
+func NewAgent(folder string, use_case string, systemPrompt string, userPrompt string, server *NetServer, passwords *Passwords) *Agent {
+
 	if systemPrompt == "" {
-		systemPrompt = `You are an AI programming assistant, who enjoys precision and carefully follows the user's requirements.
-Take advantage of function(tool) calling; they are very helpful! If you can't find the right function(tool), use the function 'create_new_tool'. If there is some problem with a tool(for example, a bug) then use the function 'update_tool'.
-You shouldn't just make variable's value. The values should be read(get()) from somewhere or computed from other values. Also, If the variable was read and it's changed, you should probably write(set()) it back.
-Don't ask to use, change, or create a tool, just do it! If the user message mentions file, you probably need to use(or create) a tool to work with the file.`
+		systemPrompt = `You are an AI tool calling assistant, who enjoys precision and carefully follows the user's requirements."
+
+If you can not find the right tool, use the tool 'create_new_tool'. If there is some problem with a tool(for example, a bug) then use the tool 'update_tool'.
+Don't ask to use, change, or create a tool, just do it! Call tools sequentially. Avoid tool call as parameter value.
+
+User informations, device settings and files are store on the disk, read them with 'access_disk' tool.
+If the variable was read from disk and it's changed, you should probably write it back with 'access_disk' tool.
+
+Tool parameter values must be real, don't use placeholder(aka example.com) and don't make up numbers or strings! Use 'access_disk' tool to search for the value.
+`
 	}
 
 	model := Service_findModelFromUse_cases(use_case)
-	agent := &Agent{Model: model}
+	agent := &Agent{Folder: folder, Model: model, server: server, passwords: passwords}
 
 	if agent.IsModelAnthropic() {
 		agent.Anthropic_props.ResetDefault()
@@ -58,9 +70,11 @@ Don't ask to use, change, or create a tool, just do it! If the user message ment
 
 		agent.Anthropic_props.System = systemPrompt
 
-		msg := Anthropic_completion_msg{Role: "user"}
-		msg.AddText(userPrompt)
-		agent.Anthropic_props.Messages = append(agent.Anthropic_props.Messages, msg)
+		{
+			msg := Anthropic_completion_msg{Role: "user"}
+			msg.AddText(userPrompt)
+			agent.Anthropic_props.Messages = append(agent.Anthropic_props.Messages, msg)
+		}
 
 	} else {
 		if strings.ToLower(use_case) == "search" {
@@ -80,6 +94,23 @@ Don't ask to use, change, or create a tool, just do it! If the user message ment
 			msg.AddText(userPrompt)
 			agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
 		}
+	}
+
+	toolList, err := GetToolsList(folder)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for _, toolName := range toolList {
+		path := filepath.Join(folder, toolName)
+		if NeedCompileTool(path) {
+			err := CompileTool(path)
+			if err != nil {
+				fmt.Println(err)
+				continue
+			}
+		}
+		agent.AddTool(path)
 	}
 
 	return agent
@@ -124,17 +155,18 @@ func (agent *Agent) Save(save_as_last bool) error {
 	return nil
 }
 
-func (agent *Agent) AddTool(toolName string) {
-	if NeedCompileTool(toolName) { //must be compiled
-		fmt.Printf("Tool '%s' can't be add because it's not compiled\n", toolName)
+func (agent *Agent) AddTool(tool string) {
+	if NeedCompileTool(tool) { //must be compiled
+		fmt.Printf("Tool '%s' can't be add because it's not compiled\n", tool)
 		return
 	}
 
-	openaiAPI, anthropicAPI, err := ConvertFileIntoTool(toolName)
+	openaiAPI, anthropicAPI, err := ConvertFileIntoTool(tool)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	toolName := filepath.Base(tool)
 	if agent.IsModelAnthropic() {
 		//update
 		for i, tool := range agent.Anthropic_props.Tools {
@@ -225,7 +257,7 @@ func (agent *Agent) PrintStats() {
 	fmt.Println("--- ---")
 }
 
-func (agent *Agent) Run(server *NetServer) bool {
+func (agent *Agent) Run() bool {
 	service := Service_findService(agent.Model)
 	if service == nil {
 		log.Fatal(fmt.Errorf("model %s not found. Edit g_services", agent.Model))
@@ -254,7 +286,11 @@ func (agent *Agent) Run(server *NetServer) bool {
 					content += it.Text
 
 				case "tool_use":
-					fn := OpenAI_completion_msg_Content_ToolCall_Function{Name: it.Name, Arguments: it.Input}
+					args, err := it.Input.MarshalJSON()
+					if err != nil {
+						log.Fatal(err)
+					}
+					fn := OpenAI_completion_msg_Content_ToolCall_Function{Name: it.Name, Arguments: string(args)}
 					tool_calls = append(tool_calls, OpenAI_completion_msg_Content_ToolCall{Id: it.Id, Type: it.Type, Function: fn})
 				}
 			}
@@ -265,14 +301,14 @@ func (agent *Agent) Run(server *NetServer) bool {
 		agent.TotalTokens += out.Usage.Input_tokens + out.Usage.Output_tokens
 		agent.TotalTime += dt
 
-		fmt.Printf("+LLM generated %dtoks which took %.1fsec = %.1f toks/sec\n", out.Usage.Output_tokens, dt, float64(out.Usage.Output_tokens)/dt)
-		fmt.Println("+LLM returns content:", content)
-		fmt.Println("+LLM returns tool_calls:", tool_calls)
+		fmt.Printf("+LLM(%s) generated %dtoks which took %.1fsec = %.1f toks/sec\n", agent.Folder, out.Usage.Output_tokens, dt, float64(out.Usage.Output_tokens)/dt)
+		fmt.Printf("+LLM(%s) returns content: %s\n", agent.Folder, content)
+		fmt.Printf("+LLM(%s) returns tool_calls: %v\n", agent.Folder, tool_calls)
 
 		msg := Anthropic_completion_msg{Role: "assistant", Content: out.Content}
 		agent.Anthropic_props.Messages = append(agent.Anthropic_props.Messages, msg)
 
-		agent.callTools(tool_calls, server)
+		agent.callTools(tool_calls)
 		return len(tool_calls) > 0
 
 	} else {
@@ -297,9 +333,9 @@ func (agent *Agent) Run(server *NetServer) bool {
 			tool_calls = out.Choices[0].Message.Tool_calls
 		}
 
-		fmt.Printf("+LLM generated %dtoks which took %.1fsec = %.1f toks/sec\n", out.Usage.Completion_tokens, dt, float64(out.Usage.Completion_tokens)/dt)
-		fmt.Println("+LLM returns content:", content)
-		fmt.Println("+LLM returns tool_calls:", tool_calls)
+		fmt.Printf("+LLM(%s) generated %dtoks which took %.1fsec = %.1f toks/sec\n", agent.Folder, out.Usage.Completion_tokens, dt, float64(out.Usage.Completion_tokens)/dt)
+		fmt.Printf("+LLM(%s) returns content: %s\n", agent.Folder, content)
+		fmt.Printf("+LLM(%s) returns tool_calls: %v\n", agent.Folder, tool_calls)
 
 		msg := OpenAI_completion_msgCalls{Role: "assistant"}
 		{
@@ -315,14 +351,13 @@ func (agent *Agent) Run(server *NetServer) bool {
 		msg.Tool_calls = tool_calls
 		agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
 
-		agent.callTools(tool_calls, server)
+		agent.callTools(tool_calls)
 		return len(tool_calls) > 0
 	}
-
-	return false
+	//return false
 }
 
-func (agent *Agent) RunLoop(max_iters int, max_tokens int, server *NetServer) {
+func (agent *Agent) RunLoop(max_iters int, max_tokens int) {
 	orig_max_iters := max_iters
 	orig_max_tokens := max_tokens
 
@@ -334,7 +369,7 @@ func (agent *Agent) RunLoop(max_iters int, max_tokens int, server *NetServer) {
 	}
 
 	for max_iters > 0 {
-		if !agent.Run(server) {
+		if !agent.Run() {
 			return
 		}
 
@@ -349,109 +384,38 @@ func (agent *Agent) RunLoop(max_iters int, max_tokens int, server *NetServer) {
 	fmt.Printf("Warning: Agent reached max iters(%d)\n", orig_max_iters)
 }
 
-func (agent *Agent) callTools(tool_calls []OpenAI_completion_msg_Content_ToolCall, server *NetServer) {
-	for _, it := range tool_calls {
-		for _, tool := range agent.OpenAI_props.Tools {
-			if tool.Function.Name == it.Function.Name {
+func (agent *Agent) callTools(tool_calls []OpenAI_completion_msg_Content_ToolCall) {
+	if len(agent.Anthropic_props.Messages) > 0 {
+		for _, it := range tool_calls {
+			for _, tool := range agent.Anthropic_props.Tools {
+				if tool.Name == it.Function.Name {
 
-				//call
-				cmd := exec.Command(fmt.Sprintf("./tools/%s/bin", it.Function.Name), strconv.Itoa(server.port))
-				cmd.Dir = ""
-				cmd.Stdout = os.Stdout
-				cmd.Stderr = os.Stderr
-				err := cmd.Start()
-				if err != nil {
-					fmt.Println("Error:", err)
-				}
+					//call
+					answerJs := agent.callTool(it.Function.Name, it.Function.Arguments)
 
-				cl, err := server.Accept()
-				if err != nil {
-					fmt.Println("Error:", err)
-				}
-				err = cl.WriteArray([]byte(it.Function.Arguments))
-				if err != nil {
-					fmt.Println("Error:", err)
-				}
-
-				var js []byte
-				var tp uint64
-				for tp != 1 {
-					tp, err = cl.ReadInt()
-					if err != nil {
-						break
-					}
-
-					switch tp {
-					case 1: //result
-						js, _ = cl.ReadArray()
-
-					case 2: //RunAgent
-						max_iters, _ := cl.ReadInt()
-						max_tokens, _ := cl.ReadInt()
-						use_cases, _ := cl.ReadArray()
-						systemPrompt, _ := cl.ReadArray()
-						userPrompt, _ := cl.ReadArray()
-
-						//init
-						agent2 := NewAgent(string(use_cases), string(systemPrompt), string(userPrompt))
-						defer agent2.Save(false)
-
-						//run
-						agent2.RunLoop(int(max_iters), int(max_tokens), server)
-
-						//send result back
-						cl.WriteArray([]byte(agent2.GetFinalMessage()))
-						agent2.PrintStats()
-
-					case 3: //SetToolCode
-						toolName, _ := cl.ReadArray()
-						toolCode, _ := cl.ReadArray()
-
-						os.MkdirAll("tools/"+string(toolName), os.ModePerm)
-						err := os.WriteFile(fmt.Sprintf("tools/%s/tool.go", toolName), toolCode, 0644)
-						if err != nil {
-							fmt.Println(err)
-						}
-
-						err = CompileTool(string(toolName))
-						if err == nil {
-							//ok
-							cl.WriteArray(nil)
-						} else {
-							//error
-							cl.WriteArray([]byte(fmt.Sprintf("Tool '%s' was created, but compiler reported error: %v", toolName, err)))
-						}
-
-						agent.AddTool(string(toolName))
-
-					case 4: //Sandbox_violation
-						info, _ := cl.ReadArray()
-						agent.Sandbox_violations = append(agent.Sandbox_violations, string(info))
-						fmt.Println("Sandbox violation:", string(info))
-						cl.WriteInt(1) //block it
-					}
-				}
-
-				err = cmd.Wait()
-				if err != nil {
-					//tool crashed
-					js = []byte(fmt.Sprintf("Tool '%s' crashed with log.Fatal: %s", tool.Function.Name, err.Error()))
-				}
-
-				//save
-				if len(agent.Anthropic_props.Messages) > 0 {
+					//save answer
 					msg := Anthropic_completion_msg{Role: "user"}
-					msg.AddToolResult(it.Id, string(js))
+					msg.AddToolResult(it.Id, answerJs)
 					//msg.AddImage()
 					agent.Anthropic_props.Messages = append(agent.Anthropic_props.Messages, msg)
 
 					fmt.Println("+Tool returns:", msg)
+				}
+			}
+		}
+	} else if len(agent.OpenAI_props.Messages) > 0 {
+		for _, it := range tool_calls {
+			for _, tool := range agent.OpenAI_props.Tools {
+				if tool.Function.Name == it.Function.Name {
 
-				} else if len(agent.OpenAI_props.Messages) > 0 {
+					//call
+					answerJs := agent.callTool(it.Function.Name, it.Function.Arguments)
+
+					//save answer
 					msg := OpenAI_completion_msgResult{Role: "tool"}
 					msg.Name = tool.Function.Name
 					msg.Tool_call_id = it.Id
-					msg.Content = string(js)
+					msg.Content = string(answerJs)
 					//msg.AddText(string(js))
 					//msg.AddImage()
 					agent.OpenAI_props.Messages = append(agent.OpenAI_props.Messages, msg)
@@ -461,4 +425,110 @@ func (agent *Agent) callTools(tool_calls []OpenAI_completion_msg_Content_ToolCal
 			}
 		}
 	}
+}
+
+func (agent *Agent) callTool(toolName string, arguments string) string {
+	tool := filepath.Join(agent.Folder, toolName)
+
+	//call
+	binPath := filepath.Join(tool, "bin")
+	cmd := exec.Command("./"+binPath, strconv.Itoa(agent.server.port))
+	cmd.Dir = ""
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	err := cmd.Start()
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+
+	cl, err := agent.server.Accept()
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+	err = cl.WriteArray([]byte(arguments))
+	if err != nil {
+		fmt.Println("Error:", err)
+	}
+
+	var js []byte
+	var tp uint64
+	for tp != 1 {
+		tp, err = cl.ReadInt()
+		if err != nil {
+			break
+		}
+
+		switch tp {
+		case 1: //result
+			js, _ = cl.ReadArray()
+
+		case 2: //SDK_RunAgent
+			max_iters, _ := cl.ReadInt()
+			max_tokens, _ := cl.ReadInt()
+			use_cases, _ := cl.ReadArray()
+			systemPrompt, _ := cl.ReadArray()
+			userPrompt, _ := cl.ReadArray()
+
+			//init
+			agent2 := NewAgent(tool, string(use_cases), string(systemPrompt), string(userPrompt), agent.server, agent.passwords)
+			defer agent2.Save(false)
+
+			//run
+			agent2.RunLoop(int(max_iters), int(max_tokens))
+
+			//send result back
+			cl.WriteArray([]byte(agent2.GetFinalMessage()))
+			agent2.PrintStats()
+
+		case 3: //SDK_SetToolCode
+			toolName, _ := cl.ReadArray()
+			toolCode, _ := cl.ReadArray()
+
+			path := filepath.Join(tool, string(toolName))
+			os.MkdirAll(path, os.ModePerm)
+			err := os.WriteFile(filepath.Join(path, "tool.go"), toolCode, 0644)
+			if err != nil {
+				fmt.Println(err)
+			}
+
+			err = CompileTool(path)
+			if err == nil {
+				//ok
+				cl.WriteArray(nil)
+			} else {
+				//error
+				cl.WriteArray([]byte(fmt.Sprintf("Tool '%s' was created, but compiler reported error: %v", path, err)))
+			}
+
+			if agent != nil {
+				agent.AddTool(path)
+			}
+
+		case 4: //SDK_Sandbox_violation
+			info, _ := cl.ReadArray()
+			if agent != nil {
+				agent.Sandbox_violations = append(agent.Sandbox_violations, string(info))
+				fmt.Println("Sandbox violation:", string(info))
+			}
+			cl.WriteInt(1) //block it
+
+		case 5: //SDK_GetPassword
+			id, _ := cl.ReadArray()
+			if agent != nil {
+				password := agent.passwords.Find(string(id))
+				cl.WriteArray([]byte(password))
+				fmt.Println("Search for password:", string(id))
+			}
+			cl.WriteInt(1) //block it
+
+		}
+	}
+
+	err = cmd.Wait()
+	if err != nil {
+		//tool crashed
+		js = []byte(fmt.Sprintf("Tool '%s' crashed with log.Fatal: %s", tool, err.Error()))
+	}
+
+	return string(js)
 }

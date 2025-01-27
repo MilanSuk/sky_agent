@@ -24,42 +24,28 @@ import (
 )
 
 func main() {
-	UserPrompt := "Search the web for How many stars are in the universe?" //default, if program doesn't have argument
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+
+	UserPrompt := "Send email to <email>. Subject: Test. Body: Hello there!"
 
 	if len(os.Args) > 1 {
 		UserPrompt = os.Args[1]
 	}
 
+	passwords := NewPasswords()
+	defer passwords.Destroy()
+
 	server := NewNetServer(8090)
 	defer server.Destroy()
 
-	mainAgent := NewAgent("agent", "", UserPrompt)
+	mainAgent := NewAgent("tools", "agent", "", UserPrompt, server, passwords)
 	if strings.ToLower(UserPrompt) == "continue" {
 		mainAgent.Open("last.json") //recover previous state
 	}
 	defer mainAgent.Save(true)
 
-	toolList, err := GetToolsList()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for _, toolName := range toolList {
-		if NeedCompileTool(toolName) {
-			err := CompileTool(toolName)
-			if err != nil {
-				fmt.Println(err)
-			}
-		}
-	}
-
-	//add tools to mainAgent
-	for _, toolName := range toolList {
-		mainAgent.AddTool(toolName)
-	}
-
 	//run
-	mainAgent.RunLoop(20, 20000, server)
+	mainAgent.RunLoop(20, 20000)
 
 	mainAgent.PrintStats()
 	fmt.Println("Final answer:", mainAgent.GetFinalMessage())
