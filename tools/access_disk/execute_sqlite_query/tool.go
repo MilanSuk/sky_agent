@@ -16,7 +16,7 @@ type execute_sqlite_query struct {
 
 func (st *execute_sqlite_query) run() (results []map[string]interface{}) {
 	// Open the SQLite database
-	db, err := sql.Open("sqlite3", "data.sqlite")
+	db, err := sql.Open("sqlite3", "main.sqlite")
 	if err != nil {
 		log.Fatal(fmt.Errorf("error opening database: %v", err))
 	}
