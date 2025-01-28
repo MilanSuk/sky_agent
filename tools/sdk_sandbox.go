@@ -16,17 +16,21 @@ func _sandbox_isPathValid(name string) bool {
 	if err != nil {
 		log.Fatal(err)
 	}
+	curr1 := filepath.Join(curr, "disk")
+	curr2 := filepath.Join(curr, "tools")
 
 	path, err := filepath.Abs(name)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	valid := strings.HasPrefix(path, curr)
-	if !valid {
+	valid1 := strings.HasPrefix(path, curr1)
+	valid2 := strings.HasPrefix(path, curr2)
+	ok := (valid1 || valid2)
+	if !ok {
 		SDK_Sandbox_violation(fmt.Errorf("path '%s' is outside of program '%s' folder", path, curr))
 	}
-	return valid
+	return ok
 }
 
 func _exec_Command(name string, arg ...string) *exec.Cmd {

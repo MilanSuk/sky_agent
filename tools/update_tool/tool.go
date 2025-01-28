@@ -49,7 +49,6 @@ func (st *update_tool) run() string {
 				//pass error back
 			}
 		}
-
 	}
 
 	return "failed"
