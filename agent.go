@@ -118,6 +118,10 @@ Tool parameter values must be real, don't use placeholder(aka example.com) and d
 
 func (agent *Agent) IsModelAnthropic() bool {
 	service := Service_findService(agent.Model)
+	if service == nil {
+		log.Fatalf("model %s not found.", agent.Model)
+	}
+
 	return service.Anthropic_completion_url != ""
 }
 
@@ -434,6 +438,7 @@ func (agent *Agent) callTool(toolName string, arguments string) string {
 	binPath := filepath.Join(tool, "bin")
 	cmd := exec.Command("./"+binPath, strconv.Itoa(agent.server.port))
 	cmd.Dir = ""
+	cmd.Stdin = os.Stdin //remove later ....
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	err := cmd.Start()
