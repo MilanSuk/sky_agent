@@ -24,8 +24,7 @@ import (
 )
 
 func main() {
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-
+	log.SetFlags(log.Llongfile) //log.LstdFlags | log.Lshortfile
 	UserPrompt := "Send email to <email>. Subject: Test. Body: Hello there!"
 
 	if len(os.Args) > 1 {
