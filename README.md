@@ -1,3 +1,6 @@
+**This repository was merged into Skyalt(https://github.com/milanSuk/skyalt) which provides GUI for agents. From now on, all fixes and improvements are done in Skyalt.**
+
+
 ## What is an AI Agent?
 AI agent is an autonomous program that solves user problems.
 To solve a high range of problems, **Agents can *not* be fixed flow and can *not* have fixed tools**. Agent must be able to create new tools from scratch.
